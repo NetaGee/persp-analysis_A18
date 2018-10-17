@@ -1,0 +1,84 @@
+---
+title: "MACS PS2"
+author: "Neta Grossfeld"
+date: "10/17/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r message=FALSE, warning=FALSE}
+
+getwd()
+setwd("/Users/netagrossfeld/Desktop/persp-analysis_A18-master_2/Assignments/A2")
+library(dplyr)
+library(tidyverse)
+
+#1. Imputing Age and Gender
+best_income <- read_delim(file = 'BestIncome.txt', delim = ',',col_names = c("lab_inc", "cap_inc", "hgt", "wgt"))
+survey_income <- read_delim(file = 'SurvIncome.txt', delim = ',', col_names = c("tot_inc", "wgt", "age", "female"))
+summary(best_income)
+summary(survey_income)
+
+#a) The scatterplot shows that the majority of females are 150 pounds or less, so we can impute gender based on whether or not the observation is 150 pounds or less. As for age, there is no clear trend, so we take the mean age and apply it to all observations. 
+
+ggplot(data=survey_income) +
+  geom_point(mapping = aes(x=wgt, y=tot_inc, color = as.factor(female)))
+
+ggplot(data=survey_income) +
+  geom_point(mapping = aes(x=age, y=tot_inc, color = as.factor(female)))
+
+#b)
+best_income$gender <- ifelse(best_income$wgt < 150, 1, 0)
+best_income$age <- mean(survey_income$age)
+
+#c)
+summary(best_income$gender)
+summary(best_income$age)
+sd(best_income$gender)
+sd(best_income$age)
+
+#d)
+correlation <- cor(best_income)
+round(correlation, 2)
+
+
+#2. Stationarity and Data Drift
+income_intel <- read_delim(file = 'IncomeIntel.txt', delim = ',',col_names = c("grad_year", "gre_qnt", "salary_p4"))
+
+#a)
+lm_s_g = lm(income_intel$salary_p4 ~ income_intel$gre_qnt)
+summary(lm_s_g)
+
+#b)
+ggplot(data=income_intel) +
+  geom_jitter(mapping = aes(x=grad_year, y=gre_qnt, color = as.factor(grad_year), alpha=.05))
+
+#The problem with using this variable to test my hypothesis is that the GRE quant scoring scale changed in 2011. See below for the code that implements changing the scale for old scores. 
+
+income_intel$new_gre_qnt <- with(income_intel, ifelse(grad_year < 2011, gre_qnt * 170 / 800, gre_qnt))
+
+#c)
+ggplot(data=income_intel) +
+  geom_jitter(mapping = aes(x=grad_year, y=salary_p4))
+
+# The problem is that inflation is not accounted for, since salaries have the same distribution but higher every year. I used Rick's solution to detrend the variable below. 
+
+by_grad_year <- group_by(income_intel, grad_year)
+avg_inc_by_year <- summarise(by_grad_year, mean_salary=mean(salary_p4))
+
+avg_growth_rate <- mean(diff(avg_inc_by_year$mean_salary, lag = 1, differences = 1)/((slice(avg_inc_by_year, 1:12))$mean_salary))
+avg_growth_rate
+
+income_intel$adj_salary <- income_intel$salary_p4/((1+avg_growth_rate)**(income_intel$grad_year - 2001))
+
+ggplot(data=income_intel) +
+  geom_jitter(mapping = aes(x=new_gre_qnt, y=adj_salary))
+
+#d)
+new_lm_s_g = lm(income_intel$adj_salary ~ income_intel$new_gre_qnt)
+summary(new_lm_s_g)
+
+
+
+```
