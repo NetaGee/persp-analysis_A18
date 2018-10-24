@@ -1,0 +1,169 @@
+---
+title: "MACS_PS3"
+author: "Neta Grossfeld"
+date: "10/24/2018"
+output: html_document
+---
+## Perspectives of Computational Analysis - Fall 2018
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+set.seed(1234)
+```
+
+#2.a
+
+```{r function}
+income_neta <- function(base_inc, rho, g, sigma, n_years, start_year = 2020){
+  
+  errors_neta <- rnorm(n_years, mean = 0, sd = sigma)
+  
+  income_log_neta <- vector("numeric", n_years)
+  
+  loan <- 95000
+  
+  for(year in seq_len(n_years)){
+    if(year == 1){
+      income_log_neta[[year]] <- log(base_inc) + errors_neta[[year]]
+    } else {
+      income_log_neta[[year]] <- (1-rho)*(log(base_inc)) + g*(year) + rho*(income_log_neta[[year-1]]) + errors_neta[[year]]
+    }
+  }
+  
+  data_frame(inc = exp(income_log_neta),
+             year = 2020 + seq_len(n_years) - 1)
+}
+```
+
+```{r simulation}
+n_sims <- 10000
+
+n_years <- 40
+
+simulated_income_neta <- n_sims %>%
+  rerun(income_neta(base_inc = 80000, sigma = .13, rho = .4, g = .025,
+                      n_years = n_years, start_year = 2020)) %>%
+  bind_rows(.id = "id") %>%
+  select(id, year, inc)
+
+#View(simulated_income_neta)
+head(simulated_income_neta)
+```
+
+```{r  plot}
+simulated_income_neta %>%
+  filter(id == 1) %>%
+  ggplot(aes(year, inc)) +
+  geom_line() +
+  labs(title = "Simulated income increase over time (one simulation)",
+       x = "Year", 
+       y = "Annual Income") +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+# 2b. Histogram and Percentages Over/Under
+```{r  histogram}
+simulated_income_neta %>%
+  filter(year == 2020) %>%
+  ggplot(aes(inc)) +
+  geom_histogram(binwidth = 50) +
+  labs(title = "Income First Year After Graduation",
+       x = "Annual Salary in 2020", 
+       y = "Frequency of Income")
+
+percentage_over_under <-
+  simulated_income_neta %>%
+  filter(year == 2020) %>%
+  mutate(over_100k = ifelse(inc > 100000, 1, 0), under_70k = ifelse(inc < 70000, 1, 0))
+
+percent_over = (sum(percentage_over_under$over_100k)/n_sims)*100
+# The percentage of students making more than 100k in their first year is 4.32%
+percent_under = (sum(percentage_over_under$under_70k)/n_sims)*100
+# The percentage of students making less than 70k in their first year is 15.54%
+
+# The distribution is relatively normally distributed, slightly skewed to the left, or the lower end of annual income. 
+
+```
+
+
+# 2c. Loan Payment
+```{r  loan payoff}
+loan_neta <- function(base_inc, rho, g, sigma, n_years, start_year = 2020, debt = 95000, debt_pct = .1){
+
+  errors_neta <- rnorm(n_years, mean = 0, sd = sigma)
+  
+  income_log_neta <- vector("numeric", n_years)
+  
+  for(year in seq_len(n_years)){
+    if(year == 1){
+      income_log_neta[[year]] <- log(base_inc) + errors_neta[[year]]
+    } else {
+      income_log_neta[[year]] <- (1-rho)*(log(base_inc)) + g*(year) + rho*(income_log_neta[[year-1]]) + errors_neta[[year]]
+    }
+  }
+  
+  debt_neta <- vector("numeric", n_years)
+
+  data_frame(inc = exp(income_log_neta), 
+             year = 2020 + seq_len(n_years))
+  
+  for(year in seq_len(n_years)){
+    if (year == 1){
+      debt_neta[[year]]<- debt
+    }
+    else {
+     if(debt_neta[[year - 1]] > 0){
+     debt_neta[[year]]<- debt_neta[[year - 1]] - (.1 * exp(income_log_neta[[year]]))
+      }else{
+        debt_neta[[year]] <- 0
+      }
+    }
+  }
+ 
+  data_frame(inc = exp(income_log_neta), 
+             year = 2020 + seq_len(n_years) - 1, debt = debt_neta)
+    
+}
+
+
+
+simulated_loan_neta <- n_sims %>%
+  rerun(loan_neta(base_inc = 80000, sigma = .13, rho = .4, g = .025,
+                      n_years = n_years, start_year = 2020, debt = 95000, debt_pct = .1)) %>%
+  bind_rows(.id = "id") %>%
+  select(id, year, debt) %>%
+  filter(debt > 0.0, year <= 2029)
+
+head(simulated_loan_neta)
+
+# histogram
+simulated_loan_neta %>%
+  ggplot(aes(year)) +
+  geom_histogram()
+```
+
+
+# 2d. Increase Base Salary, Pay Off Loans
+```{r  re-simulation}
+simulated_loan_neta <- n_sims %>%
+  rerun(loan_neta(base_inc = 90000, sigma = .17, rho = .4, g = .025,
+                      n_years = n_years, start_year = 2020, debt = 95000, debt_pct = .1)) %>%
+  bind_rows(.id = "id") %>%
+  select(id, year, debt) %>%
+  group_by(id) %>%
+  filter(debt > 0.0)
+
+head(simulated_loan_neta)
+
+# histogram
+simulated_loan_neta %>%
+  ggplot(aes(year)) +
+  geom_histogram()
+
+```
+
